@@ -1,0 +1,48 @@
+# ------------------------
+# Python cache and build
+# ------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyd
+*.egg-info/
+build/
+dist/
+
+# ------------------------
+# Virtual environment
+# ------------------------
+venv/
+.env/
+
+# ------------------------
+# Data files (raw + processed)
+# These can be regenerated, so don't track them
+# ------------------------
+data/raw/
+data/processed/
+
+# ------------------------
+# Databases
+# ------------------------
+*.db
+*.sqlite
+
+# ------------------------
+# Jupyter
+# ------------------------
+.ipynb_checkpoints/
+*.ipynb
+
+# ------------------------
+# VS Code / IDE settings
+# ------------------------
+.vscode/
+.idea/
+
+# ------------------------
+# OS files
+# ------------------------
+.DS_Store
+Thumbs.db
