@@ -1,56 +1,58 @@
 # etl/validate_data.py
 
 import pandas as pd
-from pathlib import Path
+import logging
 from sqlalchemy import create_engine
+from config import DB_URL
 
-# Paths
-PROCESSED_PATH = Path("data/processed/")
-DB_PATH = PROCESSED_PATH / "brazil_ecommerce.db"
-engine = create_engine(f"sqlite:///{DB_PATH}")
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+engine = create_engine(DB_URL)
 
 def check_missing_values(df: pd.DataFrame, name: str):
-    """Check and print missing values summary for a dataframe"""
+    """Check and log missing values summary for a dataframe"""
     missing = df.isnull().sum()
     missing = missing[missing > 0]
     if not missing.empty:
-        print(f"⚠️ Missing values in {name}:")
-        print(missing)
+        logging.warning(f"Missing values in {name}:\n{missing}")
     else:
-        print(f"✅ No missing values in {name}")
+        logging.info(f"No missing values in {name}")
 
 def check_duplicates(df: pd.DataFrame, name: str, subset=None):
-    """Check and print duplicate rows"""
+    """Check and log duplicate rows"""
     dups = df.duplicated(subset=subset).sum()
     if dups > 0:
-        print(f"⚠️ Found {dups} duplicate rows in {name}")
+        logging.warning(f"Found {dups} duplicate rows in {name}")
     else:
-        print(f"✅ No duplicates in {name}")
+        logging.info(f"No duplicates in {name}")
 
 def validate_orders():
-    orders = pd.read_sql("SELECT * FROM orders_fact", engine)
-    print("\n--- Validating orders_fact ---")
-    check_missing_values(orders, "orders_fact")
-    check_duplicates(orders, "orders_fact", subset=["order_id"])
+    df = pd.read_sql("SELECT * FROM orders_fact", engine)
+    logging.info("Validating orders_fact...")
+    check_missing_values(df, "orders_fact")
+    check_duplicates(df, "orders_fact", subset=["order_id"])
+    return df
 
 def validate_customers():
-    customers = pd.read_sql("SELECT * FROM customers_dim", engine)
-    print("\n--- Validating customers_dim ---")
-    check_missing_values(customers, "customers_dim")
-    check_duplicates(customers, "customers_dim", subset=["customer_id"])
+    df = pd.read_sql("SELECT * FROM customers_dim", engine)
+    logging.info("Validating customers_dim...")
+    check_missing_values(df, "customers_dim")
+    check_duplicates(df, "customers_dim", subset=["customer_id"])
+    return df
 
 def validate_sellers():
-    sellers = pd.read_sql("SELECT * FROM sellers_dim", engine)
-    print("\n--- Validating sellers_dim ---")
-    check_missing_values(sellers, "sellers_dim")
-    check_duplicates(sellers, "sellers_dim", subset=["seller_id"])
+    df = pd.read_sql("SELECT * FROM sellers_dim", engine)
+    logging.info("Validating sellers_dim...")
+    check_missing_values(df, "sellers_dim")
+    check_duplicates(df, "sellers_dim", subset=["seller_id"])
+    return df
 
 def run_all_validations():
-    print("🔍 Running data validations...\n")
+    logging.info("🔍 Running data validations...")
     validate_orders()
     validate_customers()
     validate_sellers()
-    print("\n✅ Validation finished!")
+    logging.info("✅ Validation finished!")
 
 if __name__ == "__main__":
     run_all_validations()

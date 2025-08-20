@@ -1,101 +1,105 @@
-# analysis/eda.py
-
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
+from sqlalchemy import create_engine
+import logging
+from config import DB_URL, OUTPUTS_PATH, LOG_PATH
 
-# === Setup ===
-sns.set(style="whitegrid")
-os.makedirs("outputs/eda", exist_ok=True)
+# --- Setup logging ---
+EDA_LOG = LOG_PATH / "eda.log"
+logging.basicConfig(
+    filename=EDA_LOG,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
-print("🔍 Running EDA...")
+# --- Database engine ---
+engine = create_engine(DB_URL)
 
-# === Load Data ===
-orders = pd.read_csv("data/processed/orders_clean.csv", parse_dates=[
-    "order_purchase_timestamp",
-    "order_delivered_customer_date",
-    "order_estimated_delivery_date"
-])
+# --- Output folder for plots ---
+PLOTS_PATH = OUTPUTS_PATH / "plots"
+PLOTS_PATH.mkdir(parents=True, exist_ok=True)
 
-# === Basic Info ===
-print("\n--- Basic Info ---")
-print(orders.info())
-print("\n--- Missing Values ---")
-print(orders.isna().sum())
+# --- Utility functions ---
+def save_plot(fig, filename: str):
+    """Save matplotlib figure to OUTPUTS_PATH/plots"""
+    filepath = PLOTS_PATH / filename
+    fig.savefig(filepath, bbox_inches="tight")
+    logging.info(f"Plot saved: {filepath}")
+    plt.close(fig)
 
-# === 1. Order Status Distribution ===
-plt.figure(figsize=(8,5))
-sns.countplot(data=orders, x="order_status", order=orders["order_status"].value_counts().index, palette="viridis")
-plt.title("Order Status Distribution")
-plt.xticks(rotation=45)
-plt.tight_layout()
-plt.savefig("outputs/eda/order_status_distribution.png")
-plt.close()
+def summary_stats(df: pd.DataFrame, col: str):
+    """Return and log basic summary statistics for a column"""
+    stats = {
+        "mean": df[col].mean(),
+        "median": df[col].median(),
+        "std": df[col].std(),
+        "min": df[col].min(),
+        "max": df[col].max(),
+    }
+    logging.info(f"Summary stats for {col}: {stats}")
+    return stats
 
-# === 2. Delivery Times ===
-orders["delivery_time_days"] = (orders["order_delivered_customer_date"] - orders["order_purchase_timestamp"]).dt.days
-orders["estimated_time_days"] = (orders["order_estimated_delivery_date"] - orders["order_purchase_timestamp"]).dt.days
+# --- EDA Functions ---
+def eda_delivery_times():
+    orders = pd.read_sql("SELECT * FROM orders_transformed", engine)
 
-plt.figure(figsize=(8,5))
-sns.histplot(orders["delivery_time_days"].dropna(), bins=30, kde=True, color="blue")
-plt.title("Distribution of Delivery Times (days)")
-plt.xlabel("Days")
-plt.tight_layout()
-plt.savefig("outputs/eda/delivery_time_distribution.png")
-plt.close()
+    # Stats
+    stats = summary_stats(orders, "delivery_time_days")
+    print("\n📊 Delivery Time Stats:", stats)
 
-# Save summary table
-delivery_summary = orders["delivery_time_days"].describe()
-delivery_summary.to_csv("outputs/eda/delivery_time_summary.csv")
+    # Histogram
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sns.histplot(orders["delivery_time_days"], bins=30, kde=True, ax=ax)
+    ax.set_title("Distribution of Delivery Times (days)")
+    save_plot(fig, "delivery_times_distribution.png")
 
-# === 3. Late Delivery Rate ===
-late_rate = orders["late_delivery_flag"].mean()
-with open("outputs/eda/late_delivery_rate.txt", "w") as f:
-    f.write(f"Late delivery rate: {late_rate:.2%}\n")
-print(f"\n📊 Late delivery rate: {late_rate:.2%}")
+def eda_late_deliveries():
+    orders = pd.read_sql("SELECT * FROM orders_transformed", engine)
 
-# === 4. Payments ===
-if "payment_type" in orders.columns:
-    plt.figure(figsize=(8,5))
-    sns.countplot(data=orders, x="payment_type", order=orders["payment_type"].value_counts().index, palette="mako")
-    plt.title("Payment Methods Distribution")
-    plt.tight_layout()
-    plt.savefig("outputs/eda/payment_distribution.png")
-    plt.close()
+    # Countplot
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.countplot(x="late_delivery_flag", data=orders, ax=ax)
+    ax.set_title("Late Delivery Flag Distribution")
+    ax.set_xticklabels(["On Time", "Late"])
+    save_plot(fig, "late_delivery_distribution.png")
 
-    # Save summary table
-    payment_summary = orders["payment_type"].value_counts().reset_index()
-    payment_summary.columns = ["payment_type", "count"]
-    payment_summary.to_csv("outputs/eda/payment_summary.csv", index=False)
+    # % Late
+    late_pct = orders["late_delivery_flag"].mean() * 100
+    print(f"\n⚠️ % Late deliveries: {late_pct:.2f}%")
+    logging.info(f"% Late deliveries: {late_pct:.2f}%")
 
-# === 5. Top Product Categories ===
-if "product_category_name" in orders.columns:
-    top_cats = orders["product_category_name"].value_counts().nlargest(10)
-    plt.figure(figsize=(10,6))
-    sns.barplot(x=top_cats.values, y=top_cats.index, palette="cubehelix")
-    plt.title("Top 10 Product Categories")
-    plt.xlabel("Number of Orders")
-    plt.tight_layout()
-    plt.savefig("outputs/eda/top_categories.png")
-    plt.close()
+def eda_revenue_trends():
+    orders = pd.read_sql(
+        "SELECT order_purchase_timestamp, payment_value FROM orders_transformed", engine
+    )
 
-    # Save summary table
-    top_cats.to_csv("outputs/eda/top_categories.csv", header=["count"])
+    # Convert timestamp
+    orders["order_purchase_timestamp"] = pd.to_datetime(orders["order_purchase_timestamp"])
+    orders["month"] = orders["order_purchase_timestamp"].dt.to_period("M")
 
-# === 6. Average Delivery Time by State (if available) ===
-if "customer_state" in orders.columns:
-    state_delivery = orders.groupby("customer_state")["delivery_time_days"].mean().reset_index()
-    state_delivery = state_delivery.sort_values("delivery_time_days", ascending=False)
-    state_delivery.to_csv("outputs/eda/state_delivery_times.csv", index=False)
+    monthly_revenue = orders.groupby("month")["payment_value"].sum().reset_index()
 
-    plt.figure(figsize=(10,6))
-    sns.barplot(data=state_delivery, x="delivery_time_days", y="customer_state", palette="crest")
-    plt.title("Average Delivery Time by State (days)")
-    plt.xlabel("Days")
-    plt.ylabel("State")
-    plt.tight_layout()
-    plt.savefig("outputs/eda/state_delivery_times.png")
-    plt.close()
+    # Line plot
+    fig, ax = plt.subplots(figsize=(10, 5))
+    sns.lineplot(x="month", y="payment_value", data=monthly_revenue, marker="o", ax=ax)
+    ax.set_title("Monthly Revenue Trend")
+    ax.set_ylabel("Revenue (R$)")
+    ax.set_xlabel("Month")
+    plt.xticks(rotation=45)
+    save_plot(fig, "monthly_revenue_trend.png")
 
-print("\n✅ EDA complete! Plots + CSVs saved in outputs/eda/")
+    print("\n💰 Monthly revenue trend saved.")
+    logging.info("Monthly revenue trend plotted")
+
+def run_eda():
+    print("🔍 Running EDA...\n")
+    logging.info("Started EDA analysis")
+    eda_delivery_times()
+    eda_late_deliveries()
+    eda_revenue_trends()
+    logging.info("Completed EDA analysis")
+    print("\n✅ EDA finished! Plots saved to outputs/plots/")
+
+if __name__ == "__main__":
+    run_eda()
