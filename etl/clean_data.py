@@ -3,7 +3,7 @@
 import pandas as pd
 import logging
 from sqlalchemy import create_engine
-from etl.config import RAW_PATH, PROCESSED_PATH, DB_URL
+from config import RAW_PATH, PROCESSED_PATH, DB_URL
 
 # --- Logging setup ---
 logging.basicConfig(
@@ -11,13 +11,12 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
     handlers=[logging.StreamHandler()]
 )
-
 logger = logging.getLogger(__name__)
 
 
 def load_raw_data():
     """Load all raw datasets from CSV."""
-    logger.info("Loading raw datasets...")
+    logger.info("📥 Loading raw datasets...")
 
     orders = pd.read_csv(
         RAW_PATH / "olist_orders_dataset.csv",
@@ -51,7 +50,7 @@ def load_raw_data():
 
 def transform_orders(orders: pd.DataFrame) -> pd.DataFrame:
     """Feature engineering for orders dataset."""
-    logger.info("Transforming orders dataset...")
+    logger.info("⚙️ Transforming orders dataset...")
 
     orders["delivery_time_days"] = (
         orders["order_delivered_customer_date"] - orders["order_purchase_timestamp"]
@@ -68,28 +67,27 @@ def transform_orders(orders: pd.DataFrame) -> pd.DataFrame:
 
 def save_to_csv(data: dict):
     """Save cleaned datasets to CSV (processed folder)."""
-    logger.info("Saving processed CSVs...")
+    logger.info("💾 Saving processed CSVs...")
     data["orders"].to_csv(PROCESSED_PATH / "orders_clean.csv", index=False)
     data["customers"].to_csv(PROCESSED_PATH / "customers_clean.csv", index=False)
 
 
 def save_to_database(data: dict):
     """Save datasets into SQLite database."""
-    logger.info("Saving tables to SQLite database...")
+    logger.info("💾 Saving tables to SQLite database...")
     engine = create_engine(DB_URL)
 
-    # Save fact/dim tables
-    data["orders"].to_sql("orders_fact", engine, if_exists="replace", index=False)
+    # Dimensions
     data["customers"].to_sql("customers_dim", engine, if_exists="replace", index=False)
     data["sellers"].to_sql("sellers_dim", engine, if_exists="replace", index=False)
     data["products"].to_sql("products_dim", engine, if_exists="replace", index=False)
+    data["geo"].to_sql("geolocation_dim", engine, if_exists="replace", index=False)
+
+    # Facts
+    data["orders"].to_sql("orders_fact", engine, if_exists="replace", index=False)
     data["order_items"].to_sql("order_items_fact", engine, if_exists="replace", index=False)
     data["payments"].to_sql("payments_fact", engine, if_exists="replace", index=False)
     data["reviews"].to_sql("reviews_fact", engine, if_exists="replace", index=False)
-    data["geo"].to_sql("geolocation_dim", engine, if_exists="replace", index=False)
-
-    # Transformed orders table
-    data["orders"].to_sql("orders_transformed", engine, if_exists="replace", index=False)
 
     logger.info(f"✅ All tables saved to database at {DB_URL}")
 
@@ -101,11 +99,11 @@ def run_etl():
     data = load_raw_data()
 
     # Merge product categories translation
+    logger.info("🔗 Merging product categories with English translation...")
     data["products"] = data["products"].merge(
         data["categories"],
         how="left",
-        left_on="product_category_name",
-        right_on="product_category_name"
+        on="product_category_name"
     )
 
     # Transform
