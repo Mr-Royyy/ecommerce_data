@@ -1,8 +1,10 @@
+# etl/clean_data.py
+
 import pandas as pd
 from pathlib import Path
 from sqlalchemy import create_engine
 
-# Paths
+# === Paths ===
 RAW_PATH = Path("data/raw/")
 PROCESSED_PATH = Path("data/processed/")
 PROCESSED_PATH.mkdir(parents=True, exist_ok=True)
@@ -11,7 +13,7 @@ PROCESSED_PATH.mkdir(parents=True, exist_ok=True)
 DB_PATH = PROCESSED_PATH / "brazil_ecommerce.db"
 engine = create_engine(f"sqlite:///{DB_PATH}")
 
-# --- Load datasets ---
+# === Load datasets ===
 orders = pd.read_csv(
     RAW_PATH / "olist_orders_dataset.csv",
     parse_dates=[
@@ -30,28 +32,33 @@ reviews = pd.read_csv(RAW_PATH / "olist_order_reviews_dataset.csv")
 geo = pd.read_csv(RAW_PATH / "olist_geolocation_dataset.csv")
 categories = pd.read_csv(RAW_PATH / "product_category_name_translation.csv")
 
-# --- Quick cleaning ---
-# Example: convert delivery date to datetime
-orders['order_delivered_customer_date'] = pd.to_datetime(
-    orders['order_delivered_customer_date'], errors='coerce'
-)
-
+# === Quick cleaning ===
 # Merge product categories translation
 products = products.merge(
     categories,
-    how='left',
-    left_on='product_category_name',
-    right_on='product_category_name'
+    how="left",
+    left_on="product_category_name",
+    right_on="product_category_name"
 )
 
-# Create new feature: delivery time in days
-orders['delivery_time_days'] = (orders['order_delivered_customer_date'] - orders['order_purchase_timestamp']).dt.days
+# === Feature Engineering on Orders ===
+# Delivery time in days
+orders["delivery_time_days"] = (
+    orders["order_delivered_customer_date"] - orders["order_purchase_timestamp"]
+).dt.days
 
-# --- Save cleaned CSVs (optional) ---
+# Flags
+orders["approved_flag"] = orders["order_approved_at"].notna().astype(int)
+orders["delivered_flag"] = orders["order_delivered_customer_date"].notna().astype(int)
+orders["late_delivery_flag"] = (
+    (orders["order_delivered_customer_date"] > orders["order_estimated_delivery_date"])
+).astype(int)
+
+# === Save cleaned CSVs (optional) ===
 orders.to_csv(PROCESSED_PATH / "orders_clean.csv", index=False)
 customers.to_csv(PROCESSED_PATH / "customers_clean.csv", index=False)
 
-# --- Save to SQLite ---
+# === Save to SQLite (raw-style fact/dim) ===
 orders.to_sql("orders_fact", engine, if_exists="replace", index=False)
 customers.to_sql("customers_dim", engine, if_exists="replace", index=False)
 sellers.to_sql("sellers_dim", engine, if_exists="replace", index=False)
@@ -61,4 +68,8 @@ payments.to_sql("payments_fact", engine, if_exists="replace", index=False)
 reviews.to_sql("reviews_fact", engine, if_exists="replace", index=False)
 geo.to_sql("geolocation_dim", engine, if_exists="replace", index=False)
 
+# === Save transformed orders table ===
+orders.to_sql("orders_transformed", engine, if_exists="replace", index=False)
+
 print(f"✅ All tables saved to SQLite database at {DB_PATH}")
+print("✅ orders_transformed table created with flags + delivery_time_days")

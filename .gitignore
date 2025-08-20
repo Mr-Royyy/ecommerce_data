@@ -5,7 +5,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
-*.pyd
 *.egg-info/
 build/
 dist/
@@ -18,16 +17,23 @@ venv/
 
 # ------------------------
 # Data files (raw + processed)
-# These can be regenerated, so don't track them
+# Do NOT commit datasets, they can be regenerated or downloaded
 # ------------------------
 data/raw/
 data/processed/
+*.csv
 
 # ------------------------
 # Databases
 # ------------------------
 *.db
 *.sqlite
+
+# ------------------------
+# Outputs (plots, reports, etc.)
+# These are generated automatically
+# ------------------------
+outputs/
 
 # ------------------------
 # Jupyter
