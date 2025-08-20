@@ -68,4 +68,71 @@ if __name__ == "__main__":
         "delivery_performance_by_state"
     )
 
+    # 4. Revenue by product category
+    run_query(
+        """
+        SELECT p.product_category_name_english AS category,
+               SUM(oi.price + oi.freight_value) AS total_revenue
+        FROM order_items_fact oi
+        JOIN products_dim p ON oi.product_id = p.product_id
+        GROUP BY category
+        ORDER BY total_revenue DESC
+        LIMIT 20;
+        """,
+        "revenue_by_category"
+    )
+
+    # 5. Top 10 best-selling products by revenue
+    run_query(
+        """
+        SELECT p.product_category_name_english AS category,
+               oi.product_id,
+               SUM(oi.price + oi.freight_value) AS total_revenue,
+               COUNT(DISTINCT oi.order_id) AS num_orders
+        FROM order_items_fact oi
+        JOIN products_dim p ON oi.product_id = p.product_id
+        GROUP BY oi.product_id, category
+        ORDER BY total_revenue DESC
+        LIMIT 10;
+        """,
+        "top_products"
+    )
+
+    # 6. Conversion funnel (order placed → approved → delivered)
+    run_query(
+        """
+        SELECT
+            COUNT(DISTINCT order_id) AS placed_orders,
+            SUM(approved_flag) AS approved_orders,
+            SUM(delivered_flag) AS delivered_orders
+        FROM orders_transformed;
+        """,
+        "conversion_funnel"
+    )
+
+    # 7. Average order value (AOV)
+    run_query(
+        """
+        SELECT ROUND(SUM(payment_value) * 1.0 / COUNT(DISTINCT order_id), 2) AS avg_order_value
+        FROM orders_transformed;
+        """,
+        "average_order_value"
+    )
+
+    # 8. Repeat purchase rate
+    run_query(
+        """
+        SELECT ROUND(
+            100.0 * SUM(CASE WHEN order_count > 1 THEN 1 ELSE 0 END) / COUNT(*),
+            2
+        ) AS repeat_purchase_rate_pct
+        FROM (
+            SELECT customer_id, COUNT(order_id) AS order_count
+            FROM orders_transformed
+            GROUP BY customer_id
+        );
+        """,
+        "repeat_purchase_rate"
+    )
+
     print("✅ SQL analytics complete!")

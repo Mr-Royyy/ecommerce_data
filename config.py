@@ -12,3 +12,8 @@ OUTPUTS_PATH.mkdir(parents=True, exist_ok=True)
 # SQLite database path
 DB_PATH = PROCESSED_PATH / "brazil_ecommerce.db"
 DB_URL = f"sqlite:///{DB_PATH}"
+
+# Logging
+LOG_PATH = OUTPUTS_PATH / "logs"
+LOG_PATH.mkdir(parents=True, exist_ok=True)
+VALIDATION_LOG = LOG_PATH / "validation.log"
