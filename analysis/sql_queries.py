@@ -60,7 +60,7 @@ if __name__ == "__main__":
                ROUND(AVG(o.delivery_time_days), 2) AS avg_delivery_days,
                ROUND(100.0 * SUM(o.late_delivery_flag) / SUM(o.delivered_flag), 2) AS pct_late
         FROM orders_transformed o
-        JOIN customers c ON o.customer_id = c.customer_id
+        JOIN customers_dim c ON o.customer_id = c.customer_id
         WHERE o.delivered_flag = 1
         GROUP BY c.customer_state
         ORDER BY avg_delivery_days ASC;
