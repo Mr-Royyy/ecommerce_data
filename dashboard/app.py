@@ -104,3 +104,333 @@ FROM (
 """
 repeat = pd.read_sql(repeat_q, engine).iloc[0, 0]
 st.metric(label="Repeat Purchase Rate", value=f"{repeat}%")
+
+# --- KPI 5: Monthly Revenue Trend ---
+st.header("📈 Monthly Revenue Trend")
+
+# Date range selector
+date_range = st.date_input(
+    "Select Date Range",
+    value=[],
+    help="Filter the monthly revenue trend by purchase date"
+)
+
+monthly_q = """
+SELECT 
+    strftime('%Y-%m', order_purchase_timestamp) AS month,
+    ROUND(SUM(oi.price + oi.freight_value), 2) AS total_revenue
+FROM orders_transformed o
+JOIN order_items_fact oi 
+    ON o.order_id = oi.order_id
+WHERE 1=1
+"""
+
+# Apply date filter if chosen
+if len(date_range) == 2:
+    start_date, end_date = date_range
+    monthly_q += f" AND date(order_purchase_timestamp) BETWEEN '{start_date}' AND '{end_date}' "
+
+monthly_q += " GROUP BY month ORDER BY month;"
+
+df_monthly = pd.read_sql(monthly_q, engine)
+
+# Plot with Seaborn
+fig3, ax3 = plt.subplots(figsize=(12, 5))
+sns.lineplot(x="month", y="total_revenue", data=df_monthly, marker="o", ax=ax3, color="teal")
+ax3.set_xlabel("Month")
+ax3.set_ylabel("Revenue (R$)")
+ax3.set_title("Revenue Trend Over Time")
+plt.xticks(rotation=45)
+st.pyplot(fig3)
+
+# --- KPI 6: Customer Retention (Cohort Analysis) ---
+st.header("👥 Customer Retention (Cohort Analysis)")
+
+cohort_q = """
+WITH customer_first_order AS (
+    SELECT 
+        customer_id,
+        MIN(DATE(order_purchase_timestamp)) AS first_order_date
+    FROM orders_transformed
+    GROUP BY customer_id
+),
+cohort_months AS (
+    SELECT
+        o.customer_id,
+        strftime('%Y-%m', cf.first_order_date) AS cohort_month,
+        strftime('%Y-%m', o.order_purchase_timestamp) AS active_month
+    FROM orders_transformed o
+    JOIN customer_first_order cf 
+        ON o.customer_id = cf.customer_id
+)
+SELECT 
+    cohort_month,
+    active_month,
+    COUNT(DISTINCT customer_id) AS customers
+FROM cohort_months
+GROUP BY cohort_month, active_month
+ORDER BY cohort_month, active_month;
+"""
+
+df_cohort = pd.read_sql(cohort_q, engine)
+
+# Pivot into retention matrix
+cohort_pivot = df_cohort.pivot_table(
+    index="cohort_month",
+    columns="active_month",
+    values="customers",
+    fill_value=0
+)
+
+# Normalize by first month (to get retention %)
+cohort_sizes = cohort_pivot.iloc[:, 0]
+retention = cohort_pivot.divide(cohort_sizes, axis=0).round(3)
+
+# Plot heatmap
+fig4, ax4 = plt.subplots(figsize=(12, 6))
+sns.heatmap(retention, annot=True, fmt=".0%", cmap="YlGnBu", ax=ax4)
+ax4.set_title("Customer Retention by Cohort")
+ax4.set_xlabel("Active Month")
+ax4.set_ylabel("Cohort (First Purchase Month)")
+
+st.pyplot(fig4)
+
+# --- KPI 7: Payment Methods Breakdown ---
+st.header("💳 Payment Methods Breakdown")
+
+payment_q = """
+SELECT 
+    payment_type,
+    COUNT(DISTINCT order_id) AS num_orders,
+    ROUND(SUM(payment_value), 2) AS total_revenue
+FROM payments_fact
+GROUP BY payment_type
+ORDER BY total_revenue DESC;
+"""
+df_payments = pd.read_sql(payment_q, engine)
+
+# Pie chart: Revenue share by payment method
+fig5, ax5 = plt.subplots(figsize=(6, 6))
+ax5.pie(
+    df_payments["total_revenue"],
+    labels=df_payments["payment_type"],
+    autopct="%1.1f%%",
+    startangle=90,
+    colors=sns.color_palette("pastel")
+)
+ax5.set_title("Revenue Share by Payment Method")
+st.pyplot(fig5)
+
+# Bar chart: Number of orders by payment method
+fig6, ax6 = plt.subplots(figsize=(8, 4))
+sns.barplot(
+    x="payment_type", 
+    y="num_orders", 
+    data=df_payments, 
+    palette="Blues_d", 
+    ax=ax6
+)
+ax6.set_ylabel("Number of Orders")
+ax6.set_xlabel("Payment Method")
+ax6.set_title("Orders by Payment Method")
+st.pyplot(fig6)
+
+# --- KPI 8: Delivery Performance ---
+st.header("🚚 Delivery Performance (On-Time vs Late)")
+
+delivery_q = """
+SELECT 
+    COUNT(*) AS total_orders,
+    SUM(CASE WHEN delivered_customer_date <= estimated_delivery_date THEN 1 ELSE 0 END) AS on_time,
+    SUM(CASE WHEN delivered_customer_date > estimated_delivery_date THEN 1 ELSE 0 END) AS late
+FROM orders_transformed
+WHERE delivered_customer_date IS NOT NULL;
+"""
+df_delivery = pd.read_sql(delivery_q, engine)
+
+# Calculate percentages
+on_time = df_delivery["on_time"].iloc[0]
+late = df_delivery["late"].iloc[0]
+total = df_delivery["total_orders"].iloc[0]
+
+on_time_pct = round(on_time * 100 / total, 2) if total > 0 else 0
+late_pct = round(late * 100 / total, 2) if total > 0 else 0
+
+# Pie chart
+fig7, ax7 = plt.subplots(figsize=(6, 6))
+ax7.pie(
+    [on_time, late],
+    labels=[f"On-Time ({on_time_pct}%)", f"Late ({late_pct}%)"],
+    autopct="%1.1f%%",
+    startangle=90,
+    colors=["#4CAF50", "#F44336"]
+)
+ax7.set_title("Delivery Performance")
+st.pyplot(fig7)
+
+# Metrics
+st.metric(label="On-Time Deliveries", value=f"{on_time_pct}%")
+st.metric(label="Late Deliveries", value=f"{late_pct}%")
+
+# --- KPI 9: Customer Location Analysis ---
+st.header("🌍 Customer Location Analysis (Top 10 States)")
+
+location_q = """
+SELECT 
+    c.customer_state AS state,
+    COUNT(o.order_id) AS total_orders
+FROM orders_transformed o
+JOIN customers_dim c ON o.customer_id = c.customer_id
+GROUP BY c.customer_state
+ORDER BY total_orders DESC
+LIMIT 10;
+"""
+df_location = pd.read_sql(location_q, engine)
+
+# Bar chart
+fig8, ax8 = plt.subplots(figsize=(10, 5))
+sns.barplot(
+    x="total_orders",
+    y="state",
+    data=df_location,
+    palette="coolwarm",
+    ax=ax8
+)
+ax8.set_xlabel("Number of Orders")
+ax8.set_ylabel("State")
+ax8.set_title("Top 10 States by Orders")
+st.pyplot(fig8)
+
+# Show table for details
+st.dataframe(df_location)
+
+# --- KPI 10: Seller Performance ---
+st.header("🏬 Top 10 Sellers by Revenue")
+
+seller_q = """
+SELECT s.seller_id,
+       ROUND(SUM(oi.price + oi.freight_value), 2) AS total_revenue
+FROM order_items_fact oi
+JOIN sellers_dim s ON oi.seller_id = s.seller_id
+GROUP BY s.seller_id
+ORDER BY total_revenue DESC
+LIMIT 10;
+"""
+df_sellers = pd.read_sql(seller_q, engine)
+
+# Plot
+fig10, ax10 = plt.subplots(figsize=(10, 5))
+sns.barplot(
+    x="total_revenue",
+    y="seller_id",
+    data=df_sellers,
+    palette="cubehelix",
+    ax=ax10
+)
+ax10.set_xlabel("Revenue (R$)")
+ax10.set_ylabel("Seller ID")
+ax10.set_title("Top 10 Sellers by Revenue")
+st.pyplot(fig10)
+
+# --- KPI 10: Seller Performance ---
+st.header("🏬 Top 10 Sellers by Revenue")
+
+seller_q = """
+SELECT s.seller_id,
+       ROUND(SUM(oi.price + oi.freight_value), 2) AS total_revenue
+FROM order_items_fact oi
+JOIN sellers_dim s ON oi.seller_id = s.seller_id
+GROUP BY s.seller_id
+ORDER BY total_revenue DESC
+LIMIT 10;
+"""
+df_sellers = pd.read_sql(seller_q, engine)
+
+# Mask seller_id for cleaner display
+df_sellers["seller_id_masked"] = df_sellers["seller_id"].str[:6] + "..."
+
+# KPI Metric: Best Seller
+top_seller_id = df_sellers.iloc[0]["seller_id_masked"]
+top_seller_revenue = df_sellers.iloc[0]["total_revenue"]
+st.metric(
+    label=f"Top Seller (ID: {top_seller_id}) Revenue",
+    value=f"R$ {top_seller_revenue:,.2f}"
+)
+
+# Bar Chart
+fig10, ax10 = plt.subplots(figsize=(10, 5))
+sns.barplot(
+    x="total_revenue",
+    y="seller_id_masked",
+    data=df_sellers,
+    palette="cubehelix",
+    ax=ax10
+)
+ax10.set_xlabel("Revenue (R$)")
+ax10.set_ylabel("Seller ID")
+ax10.set_title("Top 10 Sellers by Revenue")
+st.pyplot(fig10)
+
+# Table View
+st.subheader("📋 Seller Revenue Table")
+st.dataframe(
+    df_sellers[["seller_id_masked", "total_revenue"]],
+    use_container_width=True
+)
+
+# --- KPI 11: Top 10 Repeat Customers by Revenue ---
+st.header("🧑‍🤝‍🧑 Top 10 Repeat Customers by Revenue")
+
+repeat_customers_q = """
+SELECT 
+    o.customer_id,
+    COUNT(DISTINCT o.order_id) AS order_count,
+    ROUND(SUM(p.payment_value), 2) AS total_revenue
+FROM orders_transformed o
+JOIN payments_fact p 
+    ON o.order_id = p.order_id
+GROUP BY o.customer_id
+HAVING COUNT(DISTINCT o.order_id) > 1
+ORDER BY total_revenue DESC
+LIMIT 10;
+"""
+df_repeat_customers = pd.read_sql(repeat_customers_q, engine)
+
+# Mask customer IDs for privacy
+df_repeat_customers["customer_id_masked"] = (
+    df_repeat_customers["customer_id"].str[:6] + "..."
+)
+
+# KPI Metric: Top Repeat Customer
+top_customer_id = df_repeat_customers.iloc[0]["customer_id_masked"]
+top_customer_revenue = df_repeat_customers.iloc[0]["total_revenue"]
+st.metric(
+    label=f"Top Repeat Customer (ID: {top_customer_id}) Revenue",
+    value=f"R$ {top_customer_revenue:,.2f}"
+)
+
+# Bar Chart
+fig11, ax11 = plt.subplots(figsize=(10, 5))
+sns.barplot(
+    x="total_revenue",
+    y="customer_id_masked",
+    data=df_repeat_customers,
+    palette="crest",
+    ax=ax11
+)
+ax11.set_xlabel("Revenue (R$)")
+ax11.set_ylabel("Customer ID")
+ax11.set_title("Top 10 Repeat Customers by Revenue")
+st.pyplot(fig11)
+
+# Table View
+st.subheader("📋 Repeat Customer Revenue Table")
+st.dataframe(
+    df_repeat_customers[["customer_id_masked", "order_count", "total_revenue"]]
+    .rename(columns={
+        "customer_id_masked": "Customer ID",
+        "order_count": "Orders",
+        "total_revenue": "Revenue (R$)"
+    }),
+    use_container_width=True
+)
