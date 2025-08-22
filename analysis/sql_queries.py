@@ -84,19 +84,20 @@ if __name__ == "__main__":
 
     # 5. Top 10 best-selling products by revenue
     run_query(
-        """
-        SELECT p.product_category_name_english AS category,
-               oi.product_id,
-               SUM(oi.price + oi.freight_value) AS total_revenue,
-               COUNT(DISTINCT oi.order_id) AS num_orders
-        FROM order_items_fact oi
-        JOIN products_dim p ON oi.product_id = p.product_id
-        GROUP BY oi.product_id, category
-        ORDER BY total_revenue DESC
-        LIMIT 10;
-        """,
-        "top_products"
-    )
+    """
+    SELECT
+        oi.product_id AS product_id,
+        p.product_category_name_english AS category,
+        SUM(oi.price + oi.freight_value) AS total_revenue,
+        COUNT(DISTINCT oi.order_id) AS num_orders
+    FROM order_items_fact oi
+    JOIN products_dim p ON oi.product_id = p.product_id
+    GROUP BY oi.product_id, category
+    ORDER BY total_revenue DESC
+    LIMIT 10;
+    """,
+    "top_products"
+)
 
     # 6. Conversion funnel (order placed → approved → delivered)
     run_query(

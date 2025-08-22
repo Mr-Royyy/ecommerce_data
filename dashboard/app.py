@@ -1,5 +1,11 @@
 # dashboard/app.py
 
+import sys
+from pathlib import Path
+
+# Add project root to Python path BEFORE any imports that need it
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -7,11 +13,9 @@ import seaborn as sns
 from sqlalchemy import create_engine
 from matplotlib.ticker import FuncFormatter
 
+# Now these imports will work
 from config import DB_URL
-
-
-# --- DB Connection ---
-engine = create_engine(DB_URL)
+from etl.clean_data import run_etl
 
 # --- Page setup ---
 st.set_page_config(
@@ -20,7 +24,17 @@ st.set_page_config(
 )
 st.title("📊 E-Commerce KPI Dashboard")
 
-# Helper: Currency formatter
+# --- Add the refresh button below the title ---
+if st.button("🔄 Refresh ETL Data"):
+    with st.spinner("Running ETL pipeline..."):
+        run_etl()  # Run your ETL pipeline
+    st.success("✅ ETL pipeline completed. Reloading dashboard...")
+    st.experimental_rerun()  # Automatically rerun the app to reload updated data
+
+# --- DB Connection ---
+engine = create_engine(DB_URL)
+
+# --- Helper: Currency formatter ---
 def currency(x, pos):
     return f"R$ {x:,.0f}"
 
@@ -256,3 +270,49 @@ with col2:
         "order_count": "Orders",
         "total_revenue": "Revenue (R$)"
     }))
+
+# --- New KPI: Top 10 Products by Revenue ---
+st.header("📦 Top 10 Products by Revenue")
+
+product_q = """
+SELECT
+    oi.product_id AS product_id,
+    p.product_category_name_english AS category,
+    SUM(oi.price + oi.freight_value) AS total_revenue,
+    COUNT(DISTINCT oi.order_id) AS order_count
+FROM order_items_fact oi
+JOIN products_dim p ON oi.product_id = p.product_id
+GROUP BY oi.product_id, category
+ORDER BY total_revenue DESC
+LIMIT 10;
+"""
+
+df_products = pd.read_sql(product_q, engine)
+
+# Combine masked product_id with category for display
+df_products["Product"] = df_products.apply(
+    lambda row: f"***{str(row['product_id'])[-4:]} - {row['category']}",
+    axis=1
+)
+
+fig8, ax8 = plt.subplots(figsize=(10, 5))
+sns.barplot(
+    x="total_revenue",
+    y="Product",
+    data=df_products,
+    palette="Greens_d",
+    ax=ax8
+)
+ax8.set_xlabel("Revenue (R$)")
+ax8.set_ylabel("")
+ax8.xaxis.set_major_formatter(FuncFormatter(currency))
+ax8.set_title("Top 10 Products by Revenue")
+st.pyplot(fig8)
+
+# Show table with nicer column names
+st.dataframe(df_products.rename(columns={
+    "product_id": "Product ID",
+    "category": "Category",
+    "order_count": "Orders",
+    "total_revenue": "Revenue (R$)"
+})[["Product", "Orders", "Revenue (R$)"]])

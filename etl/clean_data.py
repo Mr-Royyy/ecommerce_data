@@ -52,15 +52,24 @@ def transform_orders(orders: pd.DataFrame) -> pd.DataFrame:
     """Feature engineering for orders dataset."""
     logger.info("⚙️ Transforming orders dataset...")
 
+    # --- Compute delivery time only for delivered orders ---
     orders["delivery_time_days"] = (
         orders["order_delivered_customer_date"] - orders["order_purchase_timestamp"]
     ).dt.days
+    orders["delivery_time_days"] = orders["delivery_time_days"].fillna(0)
 
+    # --- Flags ---
     orders["approved_flag"] = orders["order_approved_at"].notna().astype(int)
     orders["delivered_flag"] = orders["order_delivered_customer_date"].notna().astype(int)
     orders["late_delivery_flag"] = (
         (orders["order_delivered_customer_date"] > orders["order_estimated_delivery_date"])
+        & orders["delivered_flag"].astype(bool)
     ).astype(int)
+
+    # --- Optional: log number of missing deliveries ---
+    missing_deliveries = orders[orders["delivered_flag"] == 0].shape[0]
+    if missing_deliveries > 0:
+        logger.warning(f"⚠️ There are {missing_deliveries} undelivered orders")
 
     return orders
 
@@ -70,6 +79,12 @@ def save_to_csv(data: dict):
     logger.info("💾 Saving processed CSVs...")
     data["orders"].to_csv(PROCESSED_PATH / "orders_clean.csv", index=False)
     data["customers"].to_csv(PROCESSED_PATH / "customers_clean.csv", index=False)
+    data["sellers"].to_csv(PROCESSED_PATH / "sellers_clean.csv", index=False)
+    data["products"].to_csv(PROCESSED_PATH / "products_clean.csv", index=False)
+    data["order_items"].to_csv(PROCESSED_PATH / "order_items_clean.csv", index=False)
+    data["payments"].to_csv(PROCESSED_PATH / "payments_clean.csv", index=False)
+    data["reviews"].to_csv(PROCESSED_PATH / "reviews_clean.csv", index=False)
+    data["geo"].to_csv(PROCESSED_PATH / "geolocation_clean.csv", index=False)
 
 
 def save_to_database(data: dict):
