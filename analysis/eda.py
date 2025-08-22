@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sqlalchemy import create_engine
 import logging
-from config import DB_URL, OUTPUTS_PATH, LOG_PATH
+from dashboard.config import DB_URL, OUTPUTS_PATH, LOG_PATH
 
 # --- Setup logging ---
 EDA_LOG = LOG_PATH / "eda.log"

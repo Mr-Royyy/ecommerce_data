@@ -3,7 +3,7 @@
 import pandas as pd
 import logging
 from sqlalchemy import create_engine
-from config import RAW_PATH, PROCESSED_PATH, DB_URL
+from dashboard.config import RAW_PATH, PROCESSED_PATH, DB_URL
 
 # --- Logging setup ---
 logging.basicConfig(

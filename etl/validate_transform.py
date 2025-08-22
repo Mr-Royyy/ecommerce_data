@@ -1,51 +1,79 @@
-# etl/validate_transform.py
-
 import pandas as pd
-import logging
 from sqlalchemy import create_engine
-from config import DB_URL
+import logging
+from dashboard.config import DB_URL, VALIDATION_LOG
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+# --- Setup logging ---
+logging.basicConfig(
+    filename=VALIDATION_LOG,
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+
 engine = create_engine(DB_URL)
 
-REQUIRED_COLS = ["approved_flag", "delivered_flag", "late_delivery_flag", "delivery_time_days"]
+def validate_transformed_orders():
+    print("🔍 Validating transformed data...")
+    logging.info("Started transformed data validation")
 
-def validate_required_columns(df: pd.DataFrame):
-    missing_cols = [col for col in REQUIRED_COLS if col not in df.columns]
+    # --- Load transformed table ---
+    orders = pd.read_sql("SELECT * FROM orders_transformed", engine)
+
+    # --- Check for required columns ---
+    required_cols = ["approved_flag", "delivered_flag", "late_delivery_flag", "delivery_time_days"]
+    missing_cols = [col for col in required_cols if col not in orders.columns]
+
     if missing_cols:
-        logging.error(f"Missing required columns: {missing_cols}")
+        msg = f"❌ Missing required columns: {missing_cols}"
+        print(msg)
+        logging.error(msg)
     else:
-        logging.info("All required flag columns are present.")
+        msg = "✅ All required flag columns are present."
+        print(msg)
+        logging.info(msg)
 
-def validate_flag_distributions(df: pd.DataFrame):
+    # --- Flag distributions ---
     for col in ["approved_flag", "delivered_flag", "late_delivery_flag"]:
-        logging.info(f"{col} distribution:\n{df[col].value_counts(dropna=False)}")
+        dist = orders[col].value_counts(dropna=False).to_dict()
+        print(f"\n--- {col} distribution ---")
+        print(dist)
+        logging.info(f"{col} distribution: {dist}")
 
-def validate_late_delivery_logic(df: pd.DataFrame):
-    invalid_late = df[(df["late_delivery_flag"] == 1) & (df["delivered_flag"] == 0)]
+    # --- Sanity check: late_delivery_flag only 1 if delivered_flag == 1 ---
+    invalid_late = orders[
+        (orders["late_delivery_flag"] == 1) & (orders["delivered_flag"] == 0)
+    ]
+
     if len(invalid_late) > 0:
-        logging.warning(f"{len(invalid_late)} rows have late_delivery_flag=1 but delivered_flag=0")
+        msg = f"⚠️ {len(invalid_late)} rows have late_delivery_flag=1 but delivered_flag=0"
+        print(msg)
+        logging.warning(msg)
     else:
-        logging.info("Late deliveries only occur for delivered orders (✅ sanity check passed).")
+        msg = "✅ All late deliveries are only for delivered orders."
+        print(msg)
+        logging.info(msg)
 
-def validate_summary_stats(df: pd.DataFrame):
-    logging.info("📊 Summary statistics:")
-    logging.info(f"Average delivery time (days): {df['delivery_time_days'].mean():.2f}")
-    logging.info(f"Median delivery time (days): {df['delivery_time_days'].median():.2f}")
-    logging.info(f"% Late deliveries: {(df['late_delivery_flag'].mean() * 100):.2f}%")
-    logging.info(f"% Orders delivered: {(df['delivered_flag'].mean() * 100):.2f}%")
-    logging.info(f"% Orders approved: {(df['approved_flag'].mean() * 100):.2f}%")
+    # --- Summary stats ---
+    avg = orders["delivery_time_days"].mean()
+    med = orders["delivery_time_days"].median()
+    late_pct = orders["late_delivery_flag"].mean() * 100
+    delivered_pct = orders["delivered_flag"].mean() * 100
+    approved_pct = orders["approved_flag"].mean() * 100
 
-def run_transform_validation():
-    logging.info("🔍 Validating transformed data...")
-    df = pd.read_sql("SELECT * FROM orders_transformed", engine)
-    validate_required_columns(df)
-    validate_flag_distributions(df)
-    validate_late_delivery_logic(df)
-    validate_summary_stats(df)
-    logging.info("✅ Validation of transformed table complete!")
-    return df
+    print("\n📊 Summary statistics:")
+    print(f"Average delivery time (days): {avg:.2f}")
+    print(f"Median delivery time (days): {med:.2f}")
+    print(f"% Late deliveries: {late_pct:.2f}%")
+    print(f"% Orders delivered: {delivered_pct:.2f}%")
+    print(f"% Orders approved: {approved_pct:.2f}%")
+
+    logging.info(
+        f"Summary stats - avg: {avg:.2f}, median: {med:.2f}, "
+        f"late%: {late_pct:.2f}, delivered%: {delivered_pct:.2f}, approved%: {approved_pct:.2f}"
+    )
+
+    print("\n✅ Validation of transformed table complete!")
+    logging.info("Completed transformed data validation")
 
 if __name__ == "__main__":
-    run_transform_validation()
+    validate_transformed_orders()
