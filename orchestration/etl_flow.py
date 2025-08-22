@@ -1,4 +1,3 @@
-from prefect import flow, task
 import logging
 from etl.clean_data import run_etl
 from etl.validate_data import run_all_validations
