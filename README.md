@@ -54,8 +54,12 @@ This will:
 Run
 ```
 # Run ETL pipeline
-python orchestration/etl_flow.py  
+python orchestration/etl_flow.py
+```
 
-# Start dashboard
+### Note
+- The .gitignore excludes large data, outputs, and environment files.
+- The database (brazil_ecommerce.db) is regenerated from raw Kaggle CSVs via the ETL pipeline.
+- Outputs such as plots, logs, and SQL exports are saved in the outputs/ directory automatically.
 streamlit run dashboard/app.py
 ```
