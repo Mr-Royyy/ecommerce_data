@@ -24,12 +24,12 @@ st.set_page_config(
 )
 st.title("📊 E-Commerce KPI Dashboard")
 
-# --- Add the refresh button below the title ---
+# --- Refresh ETL button ---
 if st.button("🔄 Refresh ETL Data"):
     with st.spinner("Running ETL pipeline..."):
-        run_etl()  # Run your ETL pipeline
+        run_etl()
     st.success("✅ ETL pipeline completed. Reloading dashboard...")
-    st.experimental_rerun()  # Automatically rerun the app to reload updated data
+    st.experimental_rerun()
 
 # --- DB Connection ---
 engine = create_engine(DB_URL)
@@ -117,14 +117,12 @@ st.metric(label="Repeat Purchase Rate", value=f"{repeat}%")
 # --- KPI 5: Monthly Revenue Trend ---
 st.header("📈 Monthly Revenue Trend")
 
-# Date filter in Streamlit
 date_range = st.date_input(
     "Select Date Range",
     value=[],
     help="Filter the monthly revenue trend by purchase date"
 )
 
-# SQL query
 monthly_q = """
 SELECT 
     strftime('%Y-%m', order_purchase_timestamp) AS month,
@@ -139,16 +137,13 @@ if len(date_range) == 2:
     monthly_q += f" AND date(order_purchase_timestamp) BETWEEN '{start_date}' AND '{end_date}' "
 monthly_q += " GROUP BY month ORDER BY month;"
 
-# Load data
 df_monthly = pd.read_sql(monthly_q, engine)
 
-# Automatically ignore the last month if revenue seems incomplete
 if not df_monthly.empty:
     last_month_revenue = df_monthly['total_revenue'].iloc[-1]
     if last_month_revenue == 0 or pd.isna(last_month_revenue):
         df_monthly = df_monthly.iloc[:-1]
 
-# Plot line chart
 fig3, ax3 = plt.subplots(figsize=(12, 5))
 sns.lineplot(
     x="month",
@@ -167,7 +162,6 @@ st.pyplot(fig3)
 
 # --- KPI 6: Payment Method Distribution ---
 st.header("💳 Payment Method Distribution")
-
 payment_q = """
 SELECT payment_type, COUNT(*) AS count, SUM(payment_value) AS total_value
 FROM payments_fact
@@ -177,13 +171,12 @@ ORDER BY total_value DESC;
 df_payment = pd.read_sql(payment_q, engine)
 
 col1, col2 = st.columns(2)
-
 with col1:
     fig4, ax4 = plt.subplots(figsize=(6, 6))
     wedges, texts, autotexts = ax4.pie(
         df_payment["count"],
-        labels=None,  # avoid overlap by removing inline labels
-        autopct=lambda p: f'{p:.1f}%' if p > 3 else '',  # only show % if > 3%
+        labels=None,
+        autopct=lambda p: f'{p:.1f}%' if p > 3 else '',
         startangle=90,
         textprops={'fontsize': 9}
     )
@@ -210,12 +203,9 @@ with col2:
     ax5.xaxis.set_major_formatter(FuncFormatter(currency))
     ax5.tick_params(axis="x", labelsize=9)  
     ax5.tick_params(axis="y", labelsize=9)  
-    plt.setp(ax5.get_xticklabels(), rotation=90, ha="center")  # vertical labels
-    
+    plt.setp(ax5.get_xticklabels(), rotation=90, ha="center") 
     ax5.set_title("Payment Value by Method", fontsize=12)
     st.pyplot(fig5)
-
-
 
 # --- KPI 7: Top 10 States by Revenue ---
 st.header("🌎 Top 10 States by Revenue")
@@ -271,9 +261,8 @@ with col2:
         "total_revenue": "Revenue (R$)"
     }))
 
-# --- New KPI: Top 10 Products by Revenue ---
+# --- KPI 9: Top 10 Products by Revenue ---
 st.header("📦 Top 10 Products by Revenue")
-
 product_q = """
 SELECT
     oi.product_id AS product_id,
@@ -286,13 +275,10 @@ GROUP BY oi.product_id, category
 ORDER BY total_revenue DESC
 LIMIT 10;
 """
-
 df_products = pd.read_sql(product_q, engine)
 
-# Combine masked product_id with category for display
 df_products["Product"] = df_products.apply(
-    lambda row: f"***{str(row['product_id'])[-4:]} - {row['category']}",
-    axis=1
+    lambda row: f"***{str(row['product_id'])[-4:]} - {row['category']}", axis=1
 )
 
 fig8, ax8 = plt.subplots(figsize=(10, 5))
@@ -309,7 +295,6 @@ ax8.xaxis.set_major_formatter(FuncFormatter(currency))
 ax8.set_title("Top 10 Products by Revenue")
 st.pyplot(fig8)
 
-# Show table with nicer column names
 st.dataframe(df_products.rename(columns={
     "product_id": "Product ID",
     "category": "Category",
