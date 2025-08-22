@@ -1,4 +1,3 @@
-# diagnostics/inspect_db.py
 import sqlite3
 
 db_path = "data/ecommerce.sqlite"  # adjust path if needed

@@ -1,5 +1,3 @@
-# dashboard/app.py
-
 import sys
 from pathlib import Path
 
@@ -12,8 +10,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sqlalchemy import create_engine
 from matplotlib.ticker import FuncFormatter
-
-# Now these imports will work
 from config import DB_URL
 from etl.clean_data import run_etl
 

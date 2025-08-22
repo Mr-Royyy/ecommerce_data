@@ -1,5 +1,3 @@
-# dashboard/metrics.py
-
 import pandas as pd
 from sqlalchemy import create_engine
 from dashboard.config import DB_URL
@@ -35,7 +33,7 @@ logger.info(f"📊 % Late deliveries: {late_percentage:.2f}%")
 logger.info(f"📊 % Orders delivered: {delivered_percentage:.2f}%")
 logger.info(f"📊 % Orders approved: {approved_percentage:.2f}%")
 
-# --- Optional: store metrics in a dict for dashboards ---
+# --- Store metrics in a dict for dashboards ---
 metrics = {
     "avg_delivery_time": avg_delivery_time,
     "median_delivery_time": median_delivery_time,
